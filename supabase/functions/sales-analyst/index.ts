@@ -250,11 +250,12 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "AI service is temporarily unavailable.", requestId }, 503, responseOrigin);
   }
 
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey)
-    return jsonResponse({ error: "OPENAI_API_KEY is not configured.", requestId }, 503, responseOrigin);
+  const cloudflareAccountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID")?.trim();
+  const cloudflareApiToken = Deno.env.get("CLOUDFLARE_API_TOKEN")?.trim();
+  if (!cloudflareAccountId || !cloudflareApiToken)
+    return jsonResponse({ error: "Cloudflare Workers AI is not configured.", requestId }, 503, responseOrigin);
 
-  const model = Deno.env.get("OPENAI_MODEL") || "gpt-5.6-luna";
+  const model = Deno.env.get("CLOUDFLARE_AI_MODEL") || "@cf/openai/gpt-oss-20b";
   const input = [
     ...history.map((message) => ({
       role: message.role,
@@ -269,44 +270,44 @@ Deno.serve(async (request) => {
     },
   ];
 
-  let openAiResponse: Response;
+  let cloudflareResponse: Response;
   try {
-    openAiResponse = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        instructions: ANALYST_INSTRUCTIONS,
-        input,
-        reasoning: { effort: "low" },
-        text: { verbosity: "medium" },
-        max_output_tokens: 1_200,
-        safety_identifier: safetyId.slice(0, 64),
-        store: false,
-        stream: true,
-        metadata: {
-          application: "american-star-sales-supply-chain-intelligence",
-          locale,
-          page: typeof (context.page as Record<string, unknown> | undefined)?.id === "string"
-            ? String((context.page as Record<string, unknown>).id).slice(0, 64)
-            : "unknown",
+    cloudflareResponse = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cloudflareAccountId)}/ai/v1/responses`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cloudflareApiToken}`,
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          model,
+          instructions: ANALYST_INSTRUCTIONS,
+          input,
+          max_output_tokens: 900,
+          stream: true,
+        }),
+      },
+    );
   } catch {
     return jsonResponse({ error: "AI provider could not be reached.", requestId }, 502, responseOrigin);
   }
 
-  if (!openAiResponse.ok) {
-    console.error("OpenAI request failed", { requestId, status: openAiResponse.status });
+  if (!cloudflareResponse.ok) {
+    console.error("Cloudflare Workers AI request failed", { requestId, status: cloudflareResponse.status });
+    if (cloudflareResponse.status === 429)
+      return jsonResponse(
+        { error: "Cloudflare Workers AI free allocation or rate limit reached.", requestId },
+        429,
+        responseOrigin,
+      );
+    if (cloudflareResponse.status === 401 || cloudflareResponse.status === 403)
+      return jsonResponse({ error: "Cloudflare Workers AI credentials are invalid.", requestId }, 503, responseOrigin);
     return jsonResponse({ error: "AI provider returned an error.", requestId }, 502, responseOrigin);
   }
-  if (!openAiResponse.body)
+  if (!cloudflareResponse.body)
     return jsonResponse({ error: "AI provider returned an empty response.", requestId }, 502, responseOrigin);
-  return new Response(openAiResponse.body, {
+  return new Response(cloudflareResponse.body, {
     status: 200,
     headers: {
       ...corsHeaders(responseOrigin),

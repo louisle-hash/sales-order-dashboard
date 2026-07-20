@@ -28,24 +28,30 @@ The Excel import is parsed in the browser. When auto-upload is enabled, rows are
 
 ## 4. Enable the AI analyst
 
-The floating AI assistant sends only the current filtered aggregates and top-ranked summaries to a Supabase Edge Function. The OpenAI key stays on Supabase and must never be embedded in `index.html`.
+The floating AI assistant sends only the current filtered aggregates and top-ranked summaries to a Supabase Edge Function. The function calls Cloudflare Workers AI so the browser never receives a provider credential.
 
-1. Add the OpenAI key in **Supabase Dashboard → Edge Functions → Secrets** with the name `OPENAI_API_KEY`, or run this command locally:
+1. In the Cloudflare dashboard, open **Workers AI → Use REST API**, create a Workers AI API token, and copy the Account ID.
+
+2. Add both values in **Supabase Dashboard → Edge Functions → Secrets**, or run this command locally:
 
    ```bash
-   supabase secrets set OPENAI_API_KEY='YOUR_KEY' --project-ref mfqptbdjkeggtykjjhgc
+   supabase secrets set \
+     CLOUDFLARE_ACCOUNT_ID='YOUR_ACCOUNT_ID' \
+     CLOUDFLARE_API_TOKEN='YOUR_API_TOKEN' \
+     CLOUDFLARE_AI_MODEL='@cf/openai/gpt-oss-20b' \
+     --project-ref mfqptbdjkeggtykjjhgc
    ```
 
-2. Apply the rate-limit migration and deploy the function when setting up a new Supabase project:
+3. Apply the rate-limit migration and deploy the function when setting up a new Supabase project:
 
    ```bash
    supabase db push --project-ref mfqptbdjkeggtykjjhgc
    supabase functions deploy sales-analyst --no-verify-jwt --project-ref mfqptbdjkeggtykjjhgc
    ```
 
-3. Never paste the OpenAI key into the dashboard, GitHub repository, or browser storage.
+4. Never paste the Cloudflare API token into the dashboard, GitHub repository, or browser storage.
 
-The deployed function uses origin restrictions, request-size validation, per-IP rate limits, short chat history, `store: false`, and a server-side model configuration. Public GitHub Pages access is still public by definition; add Supabase Auth and authenticated policies before using the dashboard for confidential external access.
+The deployed function uses origin restrictions, request-size validation, per-IP rate limits, short chat history and a server-side model configuration. Cloudflare Workers AI includes a daily free allocation; requests stop when that allocation is exhausted on the Free plan. Public GitHub Pages access is still public by definition; add Supabase Auth and authenticated policies before using the dashboard for confidential external access.
 
 ## Security
 
