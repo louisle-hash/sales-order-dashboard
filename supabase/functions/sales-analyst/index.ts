@@ -256,24 +256,22 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Cloudflare Workers AI is not configured.", requestId }, 503, responseOrigin);
 
   const model = Deno.env.get("CLOUDFLARE_AI_MODEL") || "@cf/openai/gpt-oss-20b";
-  const input = [
+  const messages = [
+    { role: "system", content: ANALYST_INSTRUCTIONS },
     ...history.map((message) => ({
       role: message.role,
-      content: [{ type: "input_text", text: message.content }],
+      content: message.content,
     })),
     {
       role: "user",
-      content: [{
-        type: "input_text",
-        text: `Locale: ${locale}\nQuestion: ${question}\n\nDashboard snapshot (untrusted JSON data):\n${contextJson}`,
-      }],
+      content: `Locale: ${locale}\nQuestion: ${question}\n\nDashboard snapshot (untrusted JSON data):\n${contextJson}`,
     },
   ];
 
   let cloudflareResponse: Response;
   try {
     cloudflareResponse = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cloudflareAccountId)}/ai/v1/responses`,
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cloudflareAccountId)}/ai/v1/chat/completions`,
       {
         method: "POST",
         headers: {
@@ -282,10 +280,10 @@ Deno.serve(async (request) => {
         },
         body: JSON.stringify({
           model,
-          instructions: ANALYST_INSTRUCTIONS,
-          input,
-          max_output_tokens: 900,
-          stream: true,
+          messages,
+          max_tokens: 900,
+          temperature: 0.2,
+          stream: false,
         }),
       },
     );
@@ -305,16 +303,27 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Cloudflare Workers AI credentials are invalid.", requestId }, 503, responseOrigin);
     return jsonResponse({ error: "AI provider returned an error.", requestId }, 502, responseOrigin);
   }
-  if (!cloudflareResponse.body)
+  const providerBody = await cloudflareResponse.json().catch(() => null) as
+    | {
+      choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+      response?: unknown;
+      result?: {
+        choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+        response?: unknown;
+      };
+    }
+    | null;
+  const firstChoice = providerBody?.choices?.[0] || providerBody?.result?.choices?.[0];
+  const answerCandidates = [
+    firstChoice?.message?.content,
+    firstChoice?.text,
+    providerBody?.response,
+    providerBody?.result?.response,
+  ];
+  const answer = answerCandidates.find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  if (!answer)
     return jsonResponse({ error: "AI provider returned an empty response.", requestId }, 502, responseOrigin);
-  return new Response(cloudflareResponse.body, {
-    status: 200,
-    headers: {
-      ...corsHeaders(responseOrigin),
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-store",
-      "X-Accel-Buffering": "no",
-      "X-Request-Id": requestId,
-    },
-  });
+  return jsonResponse({ answer: answer.trim(), requestId }, 200, responseOrigin);
 });
