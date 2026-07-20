@@ -26,6 +26,27 @@ This folder is ready to upload to a GitHub repository.
 
 The Excel import is parsed in the browser. When auto-upload is enabled, rows are then sent to Supabase in batches. Reloading the page restores the workbook embedded in `index.html`.
 
+## 4. Enable the AI analyst
+
+The floating AI assistant sends only the current filtered aggregates and top-ranked summaries to a Supabase Edge Function. The OpenAI key stays on Supabase and must never be embedded in `index.html`.
+
+1. Add the OpenAI key in **Supabase Dashboard → Edge Functions → Secrets** with the name `OPENAI_API_KEY`, or run this command locally:
+
+   ```bash
+   supabase secrets set OPENAI_API_KEY='YOUR_KEY' --project-ref mfqptbdjkeggtykjjhgc
+   ```
+
+2. Apply the rate-limit migration and deploy the function when setting up a new Supabase project:
+
+   ```bash
+   supabase db push --project-ref mfqptbdjkeggtykjjhgc
+   supabase functions deploy sales-analyst --no-verify-jwt --project-ref mfqptbdjkeggtykjjhgc
+   ```
+
+3. Never paste the OpenAI key into the dashboard, GitHub repository, or browser storage.
+
+The deployed function uses origin restrictions, request-size validation, per-IP rate limits, short chat history, `store: false`, and a server-side model configuration. Public GitHub Pages access is still public by definition; add Supabase Auth and authenticated policies before using the dashboard for confidential external access.
+
 ## Security
 
 The standalone dashboard and embedded workbook are public to anyone who can access the GitHub Pages URL. The anon key is also visible by design. Use Supabase RLS policies and never embed a service-role key. For private data, use authenticated policies or a protected Edge Function instead of the permissive sample policies.
