@@ -70,6 +70,30 @@ function jsonResponse(
   });
 }
 
+function extractGeneratedText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value))
+    return value.map(extractGeneratedText).filter(Boolean).join("\n").trim();
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  for (const key of ["text", "content", "output_text", "response"]) {
+    const text = extractGeneratedText(record[key]);
+    if (text) return text;
+  }
+  return "";
+}
+
+function cleanGeneratedAnswer(answer: string, question: string) {
+  const asksForTechnicalFields = /\b(json|field|schema|raw)\b|trường dữ liệu|dữ liệu gốc/i.test(question);
+  if (asksForTechnicalFields) return answer.trim();
+  return answer
+    .replace(
+      /\s*\((?:totals|monthlyRevenue|industryBreakdown|topCustomers|topSalespeople|topProducts|topStates|backlogAging|dataQuality|orderStatuses|categories|lifecycleStatuses)(?:\.[^)]+)?\)/gi,
+      "",
+    )
+    .trim();
+}
+
 function clientIp(request: Request) {
   return (
     request.headers.get("cf-connecting-ip") ||
@@ -166,8 +190,16 @@ Evidence rules:
 
 Response style:
 - Keep the answer compact and decision-oriented.
-- Prefer 3 to 6 short bullets when several findings are needed.
-- Use plain text with simple headings and bullets; do not emit HTML or tables.
+- Keep the entire answer under 220 words and eight bullets total.
+- Use at most three conclusion bullets, three supporting-evidence bullets, and two recommended-action bullets.
+- Use clean Markdown only: short level-three section headings, bullet lists, and bold text for decision-critical figures.
+- Never show raw JSON, field paths, backticks, code blocks, implementation details, or technical field names unless the user explicitly asks for them.
+- Translate business labels into the requested locale and format figures for that locale. Do not repeat the same number in multiple sections.
+- Foam and Mattress are official industry names, not ordinary words. Always preserve these two names exactly and never translate them.
+- In supporting evidence, cite human-readable business labels only. Never mention source field names such as totals.revenue or monthlyRevenue.
+- In Vietnamese, say "giao đúng hạn" instead of "on-time", while preserving proper names and the industry names Foam and Mattress.
+- Use at most three sections: conclusion, supporting evidence, and recommended action. Omit a section when it adds no value.
+- Do not emit HTML or tables.
 - Preserve customer, salesperson, product, category, and state names exactly as they appear in the snapshot.`;
 
 Deno.serve(async (request) => {
@@ -281,7 +313,7 @@ Deno.serve(async (request) => {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: 900,
+          max_tokens: 2_000,
           temperature: 0.2,
           stream: false,
         }),
@@ -305,25 +337,36 @@ Deno.serve(async (request) => {
   }
   const providerBody = await cloudflareResponse.json().catch(() => null) as
     | {
-      choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+      choices?: Array<{
+        message?: { content?: unknown };
+        text?: unknown;
+        finish_reason?: unknown;
+      }>;
       response?: unknown;
       result?: {
-        choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+        choices?: Array<{
+          message?: { content?: unknown };
+          text?: unknown;
+          finish_reason?: unknown;
+        }>;
         response?: unknown;
       };
     }
     | null;
   const firstChoice = providerBody?.choices?.[0] || providerBody?.result?.choices?.[0];
-  const answerCandidates = [
+  const answerCandidates: unknown[] = [
     firstChoice?.message?.content,
     firstChoice?.text,
     providerBody?.response,
     providerBody?.result?.response,
   ];
-  const answer = answerCandidates.find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  );
-  if (!answer)
+  const answer = answerCandidates.map(extractGeneratedText).find(Boolean);
+  if (!answer) {
+    console.error("Cloudflare Workers AI returned no final text", {
+      requestId,
+      finishReason: firstChoice?.finish_reason || "unknown",
+    });
     return jsonResponse({ error: "AI provider returned an empty response.", requestId }, 502, responseOrigin);
-  return jsonResponse({ answer: answer.trim(), requestId }, 200, responseOrigin);
+  }
+  return jsonResponse({ answer: cleanGeneratedAnswer(answer, question), requestId }, 200, responseOrigin);
 });
