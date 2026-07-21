@@ -195,6 +195,7 @@ Response style:
 - Use clean Markdown only: short level-three section headings, bullet lists, and bold text for decision-critical figures.
 - Never show raw JSON, field paths, backticks, code blocks, implementation details, or technical field names unless the user explicitly asks for them.
 - Translate business labels into the requested locale and format figures for that locale. Do not repeat the same number in multiple sections.
+- All monetary values are USD. Always prefix them with $ and use US separators, for example $11,680,956.43. Format counts with comma thousands separators, for example 3,960, and percentages without a space before %, for example 66.5%.
 - Foam and Mattress are official industry names, not ordinary words. Always preserve these two names exactly and never translate them.
 - In supporting evidence, cite human-readable business labels only. Never mention source field names such as totals.revenue or monthlyRevenue.
 - In Vietnamese, say "giao đúng hạn" instead of "on-time", while preserving proper names and the industry names Foam and Mattress.
