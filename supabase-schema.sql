@@ -1,5 +1,8 @@
--- Run once in Supabase Dashboard → SQL Editor.
--- This schema supports the standalone GitHub Pages dashboard.
+-- OBSOLETE — DO NOT RUN FOR NEW INSTALLATIONS.
+-- The versioned, production schema now lives in:
+--   supabase/migrations/20260728080247_sales_supply_foundation.sql
+--   supabase/migrations/20260728081631_optimize_rls_policies.sql
+-- This legacy file is retained only as a historical reference.
 
 create extension if not exists pgcrypto;
 

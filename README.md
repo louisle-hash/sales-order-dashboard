@@ -2,12 +2,13 @@
 
 This folder is ready to upload to a GitHub repository.
 
-## 1. Configure Supabase
+## 1. Supabase foundation
 
-1. Create a Supabase project.
-2. Open **SQL Editor** and run `supabase-schema.sql` once.
-3. Copy the **Project URL** and **anon/public key** from **Project Settings → API**.
-4. Never use the service-role key in the HTML dashboard.
+The production app uses the dedicated project **American Star Sales Supply
+Chain**. Its versioned schema is stored under `supabase/migrations/`.
+
+Do not run the legacy `supabase-schema.sql` file for a new installation.
+Never put a secret or service-role key in the HTML dashboard.
 
 ## 2. Publish on GitHub Pages
 
@@ -19,12 +20,15 @@ This folder is ready to upload to a GitHub repository.
 
 ## 3. Connect the dashboard
 
-1. Open **Supabase data sync** in the dashboard.
-2. Enter the Supabase Project URL and anon/public key.
-3. Test the connection and save.
-4. Enable automatic upload if every successful Excel import should be saved.
+1. Sign in with an internal account.
+2. Open **Supabase data sync** in the dashboard.
+3. Test the connection.
+4. Keep automatic upload enabled if every successful Excel import should be saved.
 
-The Excel import is parsed in the browser. When auto-upload is enabled, rows are then sent to Supabase in batches. Reloading the page restores the workbook embedded in `index.html`.
+The Excel import is parsed in the browser. Authorized uploads are sent to
+Supabase in batches and verified before the import is marked complete. Reloading
+the page reuses the browser cache when it matches the latest complete cloud
+revision.
 
 ## 4. Enable the AI analyst
 
@@ -39,20 +43,24 @@ The floating AI assistant sends only the current filtered aggregates and top-ran
      CLOUDFLARE_ACCOUNT_ID='YOUR_ACCOUNT_ID' \
      CLOUDFLARE_API_TOKEN='YOUR_API_TOKEN' \
      CLOUDFLARE_AI_MODEL='@cf/openai/gpt-oss-20b' \
-     --project-ref mfqptbdjkeggtykjjhgc
+     --project-ref qkomdvikqfptfdhbedny
    ```
 
 3. Apply the rate-limit migration and deploy the function when setting up a new Supabase project:
 
    ```bash
-   supabase db push --project-ref mfqptbdjkeggtykjjhgc
-   supabase functions deploy sales-analyst --no-verify-jwt --project-ref mfqptbdjkeggtykjjhgc
+   supabase db push --project-ref qkomdvikqfptfdhbedny
+   supabase functions deploy sales-analyst --no-verify-jwt --project-ref qkomdvikqfptfdhbedny
    ```
 
 4. Never paste the Cloudflare API token into the dashboard, GitHub repository, or browser storage.
 
-The deployed function uses origin restrictions, request-size validation, per-IP rate limits, short chat history and a server-side model configuration. Cloudflare Workers AI includes a daily free allocation; requests stop when that allocation is exhausted on the Free plan. Public GitHub Pages access is still public by definition; add Supabase Auth and authenticated policies before using the dashboard for confidential external access.
+The deployed function uses origin restrictions, request-size validation, per-IP
+rate limits, short chat history and a server-side model configuration.
 
 ## Security
 
-The standalone dashboard and embedded workbook are public to anyone who can access the GitHub Pages URL. The anon key is also visible by design. Use Supabase RLS policies and never embed a service-role key. For private data, use authenticated policies or a protected Edge Function instead of the permissive sample policies.
+The publishable key is visible by design and carries only anonymous privileges.
+RLS is enabled on every application table. Anonymous dashboard reads remain
+temporarily enabled during the account rollout; uploads, configuration writes
+and all operational supply-chain data require an authenticated authorized role.
